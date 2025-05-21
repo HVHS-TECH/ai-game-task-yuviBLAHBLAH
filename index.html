@@ -1,29 +1,89 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>Snake Game</title>
+  <meta charset="UTF-8" />
+  <title>Snake Game - Start Menu + WASD</title>
   <style>
-    canvas {
-      background: #000;
-      display: block;
-      margin: 0 auto;
-    }
-    #score {
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: #111;
+      color: #fff;
       text-align: center;
-      font-size: 24px;
-      color: #333;
+    }
+    canvas {
+      display: block;
+      margin: 20px auto;
+      background: #000;
+      border: 2px solid #444;
+    }
+    #controls {
       margin-top: 10px;
+      font-size: 18px;
+    }
+    select {
+      padding: 4px 10px;
+      font-size: 16px;
+    }
+    #startMenu {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0,0,0,0.9);
+      color: white;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 10;
+    }
+    #startMenu h1 {
+      margin-bottom: 20px;
+    }
+    #startMenu p {
+      margin: 5px 0;
+    }
+    #startBtn {
+      margin-top: 20px;
+      padding: 10px 20px;
+      font-size: 18px;
+      cursor: pointer;
     }
   </style>
 </head>
 <body>
+  <div id="startMenu">
+    <h1>🐍 Snake Game</h1>
+    <p>Use Arrow Keys or WASD to move</p>
+    <p>Press <strong>P</strong> to pause</p>
+    <p>Eat apples to grow and go faster</p>
+    <button id="startBtn">Start Game</button>
+  </div>
+
   <canvas id="game" width="400" height="400"></canvas>
-  <div id="score">Score: 0</div>
+
+  <div id="controls">
+    <div id="score">Score: 0 | High Score: 0</div>
+    Snake Skin:
+    <select id="skinSelector">
+      <option value="#0f0">Classic Green</option>
+      <option value="#00ffff">Cyan</option>
+      <option value="#ff0">Yellow</option>
+      <option value="#f0f">Purple</option>
+      <option value="#fff">White</option>
+      <option value="#ff6600">Orange</option>
+    </select>
+  </div>
 
   <script>
     const canvas = document.getElementById("game");
     const ctx = canvas.getContext("2d");
+    const skinSelector = document.getElementById("skinSelector");
+    const scoreDisplay = document.getElementById("score");
+    const startMenu = document.getElementById("startMenu");
+    const startBtn = document.getElementById("startBtn");
 
     const gridSize = 20;
     const tileCount = canvas.width / gridSize;
@@ -35,19 +95,26 @@
       y: Math.floor(Math.random() * tileCount)
     };
     let score = 0;
-    let frame = 0;
+    let highScore = localStorage.getItem("snakeHighScore") || 0;
+    let interval;
+    let speed = 200;
     let gameStarted = false;
+    let paused = false;
 
-    function gameLoop() {
-      requestAnimationFrame(gameLoop);
-      if (++frame % 6 !== 0) return;
+    let snakeColor = localStorage.getItem("snakeColor") || "#0f0";
+    skinSelector.value = snakeColor;
 
-      update();
-      draw();
+    function startGameLoop() {
+      if (interval) clearInterval(interval);
+      interval = setInterval(() => {
+        if (!paused) {
+          update();
+          draw();
+        }
+      }, speed);
     }
 
     function update() {
-      // Don't move if the game hasn't started
       if (velocity.x === 0 && velocity.y === 0) return;
 
       const head = { x: snake[0].x + velocity.x, y: snake[0].y + velocity.y };
@@ -57,6 +124,10 @@
         head.x >= tileCount || head.y >= tileCount ||
         snake.some(seg => seg.x === head.x && seg.y === head.y)
       ) {
+        if (score > highScore) {
+          highScore = score;
+          localStorage.setItem("snakeHighScore", highScore);
+        }
         alert("Game Over! Final Score: " + score);
         location.reload();
         return;
@@ -66,7 +137,9 @@
 
       if (head.x === apple.x && head.y === apple.y) {
         score++;
-        document.getElementById("score").innerText = "Score: " + score;
+        speed = Math.max(50, speed - 10);
+        updateScoreDisplay();
+        startGameLoop();
         apple = {
           x: Math.floor(Math.random() * tileCount),
           y: Math.floor(Math.random() * tileCount)
@@ -80,34 +153,64 @@
       ctx.fillStyle = "#000";
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-      // Snake
-      ctx.fillStyle = "#0f0";
+      ctx.fillStyle = snakeColor;
       snake.forEach(segment => {
         ctx.fillRect(segment.x * gridSize, segment.y * gridSize, gridSize - 2, gridSize - 2);
       });
 
-      // Apple
       ctx.fillStyle = "#f00";
       ctx.fillRect(apple.x * gridSize, apple.y * gridSize, gridSize - 2, gridSize - 2);
     }
 
+    function updateScoreDisplay() {
+      scoreDisplay.innerText = `Score: ${score} | High Score: ${highScore}`;
+    }
+
     document.addEventListener("keydown", e => {
-      let started = true;
-      switch (e.key) {
-        case "ArrowUp": if (velocity.y === 0) velocity = { x: 0, y: -1 }; break;
-        case "ArrowDown": if (velocity.y === 0) velocity = { x: 0, y: 1 }; break;
-        case "ArrowLeft": if (velocity.x === 0) velocity = { x: -1, y: 0 }; break;
-        case "ArrowRight": if (velocity.x === 0) velocity = { x: 1, y: 0 }; break;
-        default: started = false;
+      if (!gameStarted) return;
+
+      if (e.key === "p" || e.key === "P") {
+        paused = !paused;
+        return;
       }
 
-      if (!gameStarted && started) {
-        gameStarted = true;
-        gameLoop();
+      const key = e.key.toLowerCase();
+      switch (key) {
+        case "arrowup":
+        case "w":
+          if (velocity.y === 0) velocity = { x: 0, y: -1 };
+          break;
+        case "arrowdown":
+        case "s":
+          if (velocity.y === 0) velocity = { x: 0, y: 1 };
+          break;
+        case "arrowleft":
+        case "a":
+          if (velocity.x === 0) velocity = { x: -1, y: 0 };
+          break;
+        case "arrowright":
+        case "d":
+          if (velocity.x === 0) velocity = { x: 1, y: 0 };
+          break;
       }
     });
 
-    draw(); // Draw initial state without starting the game
+    skinSelector.addEventListener("change", () => {
+      snakeColor = skinSelector.value;
+      localStorage.setItem("snakeColor", snakeColor);
+    });
+
+    startBtn.addEventListener("click", () => {
+      startMenu.style.display = "none";
+      gameStarted = true;
+      updateScoreDisplay();
+      draw();
+      startGameLoop();
+    });
+
+    // Initial score display before game starts
+    updateScoreDisplay();
+    draw();
   </script>
 </body>
 </html>
