@@ -35,6 +35,8 @@
       y: Math.floor(Math.random() * tileCount)
     };
     let score = 0;
+    let frame = 0;
+    let gameStarted = false;
 
     function gameLoop() {
       requestAnimationFrame(gameLoop);
@@ -44,13 +46,12 @@
       draw();
     }
 
-    let frame = 0;
-
     function update() {
-      // Move snake head
+      // Don't move if the game hasn't started
+      if (velocity.x === 0 && velocity.y === 0) return;
+
       const head = { x: snake[0].x + velocity.x, y: snake[0].y + velocity.y };
 
-      // Game over if out of bounds or hits itself
       if (
         head.x < 0 || head.y < 0 ||
         head.x >= tileCount || head.y >= tileCount ||
@@ -63,7 +64,6 @@
 
       snake.unshift(head);
 
-      // Eat apple
       if (head.x === apple.x && head.y === apple.y) {
         score++;
         document.getElementById("score").innerText = "Score: " + score;
@@ -80,27 +80,34 @@
       ctx.fillStyle = "#000";
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-      // Draw snake
+      // Snake
       ctx.fillStyle = "#0f0";
       snake.forEach(segment => {
         ctx.fillRect(segment.x * gridSize, segment.y * gridSize, gridSize - 2, gridSize - 2);
       });
 
-      // Draw apple
+      // Apple
       ctx.fillStyle = "#f00";
       ctx.fillRect(apple.x * gridSize, apple.y * gridSize, gridSize - 2, gridSize - 2);
     }
 
     document.addEventListener("keydown", e => {
+      let started = true;
       switch (e.key) {
         case "ArrowUp": if (velocity.y === 0) velocity = { x: 0, y: -1 }; break;
         case "ArrowDown": if (velocity.y === 0) velocity = { x: 0, y: 1 }; break;
         case "ArrowLeft": if (velocity.x === 0) velocity = { x: -1, y: 0 }; break;
         case "ArrowRight": if (velocity.x === 0) velocity = { x: 1, y: 0 }; break;
+        default: started = false;
+      }
+
+      if (!gameStarted && started) {
+        gameStarted = true;
+        gameLoop();
       }
     });
 
-    gameLoop(); // Start the game
+    draw(); // Draw initial state without starting the game
   </script>
 </body>
 </html>
