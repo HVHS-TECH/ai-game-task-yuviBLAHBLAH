@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Snake Game - Start Menu + WASD</title>
+  <title>Snake Game with Sounds & Screen Shake</title>
   <style>
     body {
       margin: 0;
@@ -10,12 +10,24 @@
       background: #111;
       color: #fff;
       text-align: center;
+      overflow: hidden;
+    }
+    #gameWrapper {
+      display: inline-block;
+      position: relative;
+      margin: 20px auto;
+      box-shadow: 0 0 10px #0f0;
+      border-radius: 8px;
+      overflow: hidden;
     }
     canvas {
-      display: block;
-      margin: 20px auto;
       background: #000;
+      display: block;
       border: 2px solid #444;
+      border-radius: 8px;
+      image-rendering: pixelated;
+      position: relative;
+      z-index: 1;
     }
     #controls {
       margin-top: 10px;
@@ -26,30 +38,51 @@
       font-size: 16px;
     }
     #startMenu {
-      position: absolute;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      background: rgba(0,0,0,0.9);
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.95);
       color: white;
       display: flex;
       flex-direction: column;
       align-items: center;
       justify-content: center;
       z-index: 10;
+      user-select: none;
     }
-    #startMenu h1 {
-      margin-bottom: 20px;
-    }
-    #startMenu p {
-      margin: 5px 0;
-    }
+    #startMenu h1 { margin-bottom: 20px; font-size: 3rem;}
     #startBtn {
       margin-top: 20px;
-      padding: 10px 20px;
-      font-size: 18px;
+      padding: 12px 24px;
+      font-size: 20px;
       cursor: pointer;
+      border: none;
+      border-radius: 6px;
+      background: #0f0;
+      color: #000;
+      font-weight: bold;
+      transition: background 0.3s;
+    }
+    #startBtn:hover {
+      background: #0c0;
+    }
+    #countdown {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      font-size: 36px;
+      color: white;
+      background: rgba(0, 0, 0, 0.8);
+      padding: 30px 60px;
+      border-radius: 15px;
+      z-index: 20;
+      white-space: pre-line;
+      opacity: 0;
+      transition: opacity 0.5s ease-in-out;
+      pointer-events: none;
+      text-shadow:
+        0 0 10px #f00,
+        0 0 20px #f00;
     }
   </style>
 </head>
@@ -57,12 +90,14 @@
   <div id="startMenu">
     <h1>🐍 Snake Game</h1>
     <p>Use Arrow Keys or WASD to move</p>
-    <p>Press <strong>P</strong> to pause</p>
+    <p>Press <strong>P</strong> to pause/unpause</p>
     <p>Eat apples to grow and go faster</p>
     <button id="startBtn">Start Game</button>
   </div>
 
-  <canvas id="game" width="400" height="400"></canvas>
+  <div id="gameWrapper">
+    <canvas id="game" width="400" height="400"></canvas>
+  </div>
 
   <div id="controls">
     <div id="score">Score: 0 | High Score: 0</div>
@@ -77,6 +112,8 @@
     </select>
   </div>
 
+  <div id="countdown"></div>
+
   <script>
     const canvas = document.getElementById("game");
     const ctx = canvas.getContext("2d");
@@ -84,6 +121,8 @@
     const scoreDisplay = document.getElementById("score");
     const startMenu = document.getElementById("startMenu");
     const startBtn = document.getElementById("startBtn");
+    const gameWrapper = document.getElementById("gameWrapper");
+    const countdownEl = document.getElementById("countdown");
 
     const gridSize = 20;
     const tileCount = canvas.width / gridSize;
@@ -100,9 +139,126 @@
     let speed = 200;
     let gameStarted = false;
     let paused = false;
+    let countdown = 5;
+    let countdownInterval;
 
     let snakeColor = localStorage.getItem("snakeColor") || "#0f0";
     skinSelector.value = snakeColor;
+
+    // PARTICLES SYSTEM
+    let particles = [];
+
+    class Particle {
+      constructor(x, y, color) {
+        this.x = x;
+        this.y = y;
+        this.radius = Math.random() * 3 + 1;
+        this.color = color;
+        this.alpha = 1;
+        this.velocity = {
+          x: (Math.random() - 0.5) * 3,
+          y: (Math.random() - 0.5) * 3
+        };
+        this.gravity = 0.03;
+        this.friction = 0.95;
+        this.glowSize = this.radius * 2 + 2;
+      }
+
+      update() {
+        this.velocity.x *= this.friction;
+        this.velocity.y *= this.friction;
+        this.velocity.y += this.gravity;
+        this.x += this.velocity.x;
+        this.y += this.velocity.y;
+        this.alpha -= 0.02;
+        if (this.alpha < 0) this.alpha = 0;
+      }
+
+      draw() {
+        ctx.save();
+        ctx.globalAlpha = this.alpha;
+        // Glow effect
+        ctx.shadowColor = this.color;
+        ctx.shadowBlur = this.glowSize;
+        ctx.fillStyle = this.color;
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+    }
+
+    function createParticles(x, y, color) {
+      for (let i = 0; i < 25; i++) {
+        particles.push(new Particle(x, y, color));
+      }
+    }
+
+    function updateParticles() {
+      for (let i = particles.length - 1; i >= 0; i--) {
+        particles[i].update();
+        if (particles[i].alpha <= 0) {
+          particles.splice(i, 1);
+        }
+      }
+    }
+
+    function drawParticles() {
+      particles.forEach(p => p.draw());
+    }
+
+    // SCREEN SHAKE
+    let shakeAmount = 0;
+    function startShake(intensity = 10, duration = 300) {
+      shakeAmount = intensity;
+      const startTime = Date.now();
+
+      function shake() {
+        const elapsed = Date.now() - startTime;
+        if (elapsed < duration) {
+          const dx = (Math.random() - 0.5) * shakeAmount;
+          const dy = (Math.random() - 0.5) * shakeAmount;
+          gameWrapper.style.transform = `translate(${dx}px, ${dy}px)`;
+          requestAnimationFrame(shake);
+        } else {
+          gameWrapper.style.transform = "translate(0,0)";
+          shakeAmount = 0;
+        }
+      }
+      shake();
+    }
+
+    // SOUNDS using Web Audio API
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    const audioCtx = new AudioContext();
+
+    function playSound(frequency, duration, volume=0.2, type='square') {
+      const oscillator = audioCtx.createOscillator();
+      const gainNode = audioCtx.createGain();
+
+      oscillator.type = type;
+      oscillator.frequency.setValueAtTime(frequency, audioCtx.currentTime);
+      gainNode.gain.setValueAtTime(volume, audioCtx.currentTime);
+
+      oscillator.connect(gainNode);
+      gainNode.connect(audioCtx.destination);
+
+      oscillator.start();
+      oscillator.stop(audioCtx.currentTime + duration/1000);
+    }
+
+    function playEatSound() {
+      playSound(880, 100, 0.3, 'triangle');
+      setTimeout(() => playSound(1320, 100, 0.3, 'triangle'), 100);
+    }
+
+    function playGameOverSound() {
+      playSound(150, 400, 0.4, 'sine');
+    }
+
+    function playPauseSound() {
+      playSound(440, 150, 0.1, 'square');
+    }
 
     function startGameLoop() {
       if (interval) clearInterval(interval);
@@ -118,18 +274,19 @@
       if (velocity.x === 0 && velocity.y === 0) return;
 
       const head = { x: snake[0].x + velocity.x, y: snake[0].y + velocity.y };
+      const hitWall = head.x < 0 || head.y < 0 || head.x >= tileCount || head.y >= tileCount;
+      const hitSelf = snake.some(seg => seg.x === head.x && seg.y === head.y);
 
-      if (
-        head.x < 0 || head.y < 0 ||
-        head.x >= tileCount || head.y >= tileCount ||
-        snake.some(seg => seg.x === head.x && seg.y === head.y)
-      ) {
+      if (hitWall || hitSelf) {
         if (score > highScore) {
           highScore = score;
           localStorage.setItem("snakeHighScore", highScore);
         }
-        alert("Game Over! Final Score: " + score);
-        location.reload();
+        playGameOverSound();
+        startShake(15, 500);
+        clearInterval(interval);
+        velocity = { x: 0, y: 0 };
+        showCountdownAndRestart();
         return;
       }
 
@@ -140,6 +297,15 @@
         speed = Math.max(50, speed - 10);
         updateScoreDisplay();
         startGameLoop();
+        playEatSound();
+
+        // Create particles at apple center position (in pixels)
+        createParticles(
+          apple.x * gridSize + gridSize / 2,
+          apple.y * gridSize + gridSize / 2,
+          snakeColor
+        );
+
         apple = {
           x: Math.floor(Math.random() * tileCount),
           y: Math.floor(Math.random() * tileCount)
@@ -147,23 +313,78 @@
       } else {
         snake.pop();
       }
+
+      updateParticles();
     }
 
     function draw() {
-      ctx.fillStyle = "#000";
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // Background gradient for polish
+      const gradient = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+      gradient.addColorStop(0, "#001100");
+      gradient.addColorStop(1, "#002200");
+      ctx.fillStyle = gradient;
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
+      // Draw apple with glow
+      ctx.save();
+      ctx.shadowColor = "#f00";
+      ctx.shadowBlur = 20;
+      ctx.fillStyle = "#f00";
+      ctx.fillRect(apple.x * gridSize, apple.y * gridSize, gridSize - 2, gridSize - 2);
+      ctx.restore();
+
+      // Draw snake with glow
+      ctx.save();
+      ctx.shadowColor = snakeColor;
+      ctx.shadowBlur = 15;
       ctx.fillStyle = snakeColor;
       snake.forEach(segment => {
         ctx.fillRect(segment.x * gridSize, segment.y * gridSize, gridSize - 2, gridSize - 2);
       });
+      ctx.restore();
 
-      ctx.fillStyle = "#f00";
-      ctx.fillRect(apple.x * gridSize, apple.y * gridSize, gridSize - 2, gridSize - 2);
+      drawParticles();
     }
 
     function updateScoreDisplay() {
       scoreDisplay.innerText = `Score: ${score} | High Score: ${highScore}`;
+    }
+
+    function showCountdownAndRestart() {
+      countdown = 5;
+      countdownEl.style.opacity = "1";
+      countdownEl.innerText = `Game Over!\nRestarting in ${countdown}...`;
+
+      countdownInterval = setInterval(() => {
+        countdown--;
+        if (countdown > 0) {
+          countdownEl.innerText = `Game Over!\nRestarting in ${countdown}...`;
+        } else {
+          clearInterval(countdownInterval);
+          countdownEl.style.opacity = "0";
+          resetGame();
+          gameStarted = true;
+          startGameLoop();
+        }
+      }, 1000);
+    }
+
+    function resetGame() {
+      snake = [{ x: 10, y: 10 }];
+      velocity = { x: 0, y: 0 };
+      apple = {
+        x: Math.floor(Math.random() * tileCount),
+        y: Math.floor(Math.random() * tileCount)
+      };
+      score = 0;
+      speed = 200;
+      paused = false;
+      particles = [];
+      updateScoreDisplay();
+      draw();
+      gameWrapper.style.transform = "translate(0,0)";
     }
 
     document.addEventListener("keydown", e => {
@@ -171,6 +392,7 @@
 
       if (e.key === "p" || e.key === "P") {
         paused = !paused;
+        playPauseSound();
         return;
       }
 
@@ -198,9 +420,14 @@
     skinSelector.addEventListener("change", () => {
       snakeColor = skinSelector.value;
       localStorage.setItem("snakeColor", snakeColor);
+      draw();
     });
 
     startBtn.addEventListener("click", () => {
+      // Resume Audio context if suspended (some browsers require user interaction)
+      if (audioCtx.state === 'suspended') {
+        audioCtx.resume();
+      }
       startMenu.style.display = "none";
       gameStarted = true;
       updateScoreDisplay();
@@ -208,7 +435,7 @@
       startGameLoop();
     });
 
-    // Initial score display before game starts
+    // Initial draw
     updateScoreDisplay();
     draw();
   </script>
